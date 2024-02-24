@@ -10,6 +10,7 @@ import (
 	"math/rand"
 	"os"
 	"os/signal"
+	"runtime"
 	"time"
 
 	"github.com/dennwc/gosd"
@@ -49,7 +50,12 @@ func run(ctx context.Context) error {
 	}
 	slog.Info("loading model", "path", *fModel)
 	c, err := gosd.New(gosd.Params{
-		ModelPath: *fModel,
+		ModelPath:       *fModel,
+		FreeImmediately: true,
+		Threads:         runtime.NumCPU(),
+		Type:            gosd.TypeDefault,
+		RNG:             gosd.CUDA_RNG,
+		Schedule:        gosd.ScheduleDefault,
 	})
 	if err != nil {
 		return err
@@ -64,14 +70,16 @@ func run(ctx context.Context) error {
 	start := time.Now()
 	slog.Info("generating image...")
 	img := c.TextToImage(gosd.TextToImageParams{
-		Prompt:   *fPrompt,
-		Negative: *fNegative,
-		CfgScale: *fCfgScale,
-		Width:    *fWidth,
-		Height:   *fHeight,
-		Sampling: smethod,
-		Steps:    *fSteps,
-		Seed:     seed,
+		Prompt:     *fPrompt,
+		Negative:   *fNegative,
+		ClipSkip:   -1,
+		CfgScale:   *fCfgScale,
+		Width:      *fWidth,
+		Height:     *fHeight,
+		Sampling:   smethod,
+		Steps:      *fSteps,
+		Seed:       seed,
+		BatchCount: 1,
 	})
 	if img == nil {
 		return errors.New("image generation failed")

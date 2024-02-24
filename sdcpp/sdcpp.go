@@ -23,19 +23,41 @@ func Free_sd_ctx(p *Ctx) {
 type SD_type_t = C.enum_sd_type_t
 
 const (
-	SD_TYPE_COUNT = C.SD_TYPE_COUNT
+	SD_TYPE_F32     = C.SD_TYPE_F32
+	SD_TYPE_F16     = C.SD_TYPE_F16
+	SD_TYPE_Q4_0    = C.SD_TYPE_Q4_0
+	SD_TYPE_Q4_1    = C.SD_TYPE_Q4_1
+	SD_TYPE_Q5_0    = C.SD_TYPE_Q5_0
+	SD_TYPE_Q5_1    = C.SD_TYPE_Q5_1
+	SD_TYPE_Q8_0    = C.SD_TYPE_Q8_0
+	SD_TYPE_Q8_1    = C.SD_TYPE_Q8_1
+	SD_TYPE_Q2_K    = C.SD_TYPE_Q2_K
+	SD_TYPE_Q3_K    = C.SD_TYPE_Q3_K
+	SD_TYPE_Q4_K    = C.SD_TYPE_Q4_K
+	SD_TYPE_Q5_K    = C.SD_TYPE_Q5_K
+	SD_TYPE_Q6_K    = C.SD_TYPE_Q6_K
+	SD_TYPE_Q8_K    = C.SD_TYPE_Q8_K
+	SD_TYPE_IQ2_XXS = C.SD_TYPE_IQ2_XXS
+	SD_TYPE_I8      = C.SD_TYPE_I8
+	SD_TYPE_I16     = C.SD_TYPE_I16
+	SD_TYPE_I32     = C.SD_TYPE_I32
+	SD_TYPE_COUNT   = C.SD_TYPE_COUNT
 )
 
 type RNG_type_t = C.enum_rng_type_t
 
 const (
-	CUDA_RNG = C.CUDA_RNG
+	STD_DEFAULT_RNG = C.STD_DEFAULT_RNG
+	CUDA_RNG        = C.CUDA_RNG
 )
 
 type Schedule_t = C.enum_schedule_t
 
 const (
-	DEFAULT = C.DEFAULT
+	DEFAULT     = C.DEFAULT
+	DISCRETE    = C.DISCRETE
+	KARRAS      = C.KARRAS
+	N_SCHEDULES = C.N_SCHEDULES
 )
 
 func New_sd_ctx(
