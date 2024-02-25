@@ -10,7 +10,6 @@ import (
 	"math/rand"
 	"os"
 	"os/signal"
-	"runtime"
 	"time"
 
 	"github.com/dennwc/gosd"
@@ -29,6 +28,8 @@ func main() {
 
 var (
 	fModel    = flag.String("m", "", "path to model")
+	fVAE      = flag.String("vae", "", "path to vae")
+	fEmbed    = flag.String("embd-dir", "", "path to embeddings")
 	fOut      = flag.String("o", "output.png", "path to write result image to")
 	fPrompt   = flag.String("p", "a cat", "the prompt to render")
 	fNegative = flag.String("n", "", "the negative prompt")
@@ -38,6 +39,7 @@ var (
 	fSteps    = flag.Int("steps", 20, "number of sample steps")
 	fCfgScale = flag.Float64("cfg-scale", 7, "unconditional guidance scale")
 	fSampling = flag.String("sampling-method", "euler_a", "sampling method")
+	fThreads  = flag.Int("threads", -1, "number of threads to use during computation")
 )
 
 func run(ctx context.Context) error {
@@ -51,8 +53,10 @@ func run(ctx context.Context) error {
 	slog.Info("loading model", "path", *fModel)
 	c, err := gosd.New(gosd.Params{
 		ModelPath:       *fModel,
+		VAEPath:         *fVAE,
+		EmbeddingDir:    *fEmbed,
 		FreeImmediately: true,
-		Threads:         runtime.NumCPU(),
+		Threads:         *fThreads,
 		Type:            gosd.TypeDefault,
 		RNG:             gosd.CUDA_RNG,
 		Schedule:        gosd.ScheduleDefault,
@@ -69,7 +73,7 @@ func run(ctx context.Context) error {
 
 	start := time.Now()
 	slog.Info("generating image...")
-	img := c.TextToImage(gosd.TextToImageParams{
+	imgs, err := c.TextToImages(gosd.TextToImageParams{
 		Prompt:     *fPrompt,
 		Negative:   *fNegative,
 		ClipSkip:   -1,
@@ -81,10 +85,11 @@ func run(ctx context.Context) error {
 		Seed:       seed,
 		BatchCount: 1,
 	})
-	if img == nil {
-		return errors.New("image generation failed")
+	if err != nil {
+		return err
 	}
-	slog.Info("generation complete", "t", time.Since(start))
+	img := imgs[0]
+	slog.Info("generation complete", "t", time.Since(start).Round(time.Millisecond))
 	slog.Info("saving to", "path", *fOut)
 	f, err := os.Create(*fOut)
 	if err != nil {

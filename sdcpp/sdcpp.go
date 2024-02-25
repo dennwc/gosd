@@ -1,8 +1,8 @@
 package sdcpp
 
 /*
-#cgo CFLAGS: -O3 -march=native
 #include "stable-diffusion.h"
+#include "cgo.h"
 #include <stdlib.h>
 */
 import "C"
@@ -130,16 +130,20 @@ func Txt2Img(
 	ctx *Ctx, prompt, negative string, clipSkip int, cfgScale float32, w, h int,
 	sample Sample_method_t, steps int, seed int64, batchCount int,
 	controlCond *SD_image_t, controlStrength float32,
-) *SD_image_t {
+) []SD_image_t {
 	promptC, pfree := cstring(prompt)
 	defer pfree()
 	negativeC, nfree := cstring(negative)
 	defer nfree()
-	return (*SD_image_t)(C.txt2img(
+	ptr := (*SD_image_t)(C.txt2img(
 		ctx, promptC, negativeC, C.int(clipSkip), C.float(cfgScale), C.int(w), C.int(h),
 		sample, C.int(steps), C.int64_t(seed), C.int(batchCount),
 		(*C.sd_image_t)(controlCond), C.float(controlStrength),
 	))
+	if ptr == nil {
+		return nil
+	}
+	return unsafe.Slice(ptr, batchCount)
 }
 
 func cstring(s string) (*C.char, func()) {
@@ -156,4 +160,48 @@ func Free[T any](p *T) {
 func FreeSlice[T any](p []T) {
 	p = p[:1]
 	C.free(unsafe.Pointer(&p[0]))
+}
+
+func Sample(
+	ctx *Ctx, gctx *GGMLContext, xt, noise *Tensor,
+	c, cvec, uc, ucvec, hint *Tensor,
+	seed int64, method Sample_method_t, steps int, cfgScale, controlStrength float32,
+) *Tensor {
+	return (*Tensor)(unsafe.Pointer(C.go_sd_sample(
+		ctx, gctx.C(), xt.C(), noise.C(),
+		c.C(), cvec.C(), uc.C(), ucvec.C(), hint.C(),
+		C.int64_t(seed), method, C.int(steps), C.float(cfgScale), C.float(controlStrength),
+	)))
+}
+
+func DecodeFirstStage(ctx *Ctx, gctx *GGMLContext, t *Tensor) *Tensor {
+	return (*Tensor)(unsafe.Pointer(C.go_sd_decodeFirstStage(ctx, gctx.C(), t.C())))
+}
+
+func GetLearnedCondition(ctx *Ctx, gctx *GGMLContext, prompt string, clipSkip int, width, height int) (c, cvec *Tensor) {
+	promptC, pfree := cstring(prompt)
+	defer pfree()
+	var pc, pcvec *C.struct_ggml_tensor
+	C.go_sd_getLearnedCondition(&pc, &pcvec, ctx, gctx.C(), promptC, C.int(clipSkip), C.int(width), C.int(height))
+	return (*Tensor)(unsafe.Pointer(pc)), (*Tensor)(unsafe.Pointer(pcvec))
+}
+
+func GetLearnedConditionNeg(ctx *Ctx, gctx *GGMLContext, prompt string, clipSkip int, width, height int) (c, cvec *Tensor) {
+	promptC, pfree := cstring(prompt)
+	defer pfree()
+	var pc, pcvec *C.struct_ggml_tensor
+	C.go_sd_getLearnedConditionNeg(&pc, &pcvec, ctx, gctx.C(), promptC, C.int(clipSkip), C.int(width), C.int(height))
+	return (*Tensor)(unsafe.Pointer(pc)), (*Tensor)(unsafe.Pointer(pcvec))
+}
+
+func MaybeFreeCond(ctx *Ctx) {
+	C.go_sd_maybeFreeCond(ctx)
+}
+
+func MaybeFreeDiff(ctx *Ctx) {
+	C.go_sd_maybeFreeDiff(ctx)
+}
+
+func MaybeFreeFirst(ctx *Ctx) {
+	C.go_sd_maybeFreeFirst(ctx)
 }

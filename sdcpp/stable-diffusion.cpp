@@ -1490,3 +1490,73 @@ sd_image_t* img2img(sd_ctx_t* sd_ctx,
 
     return result_images;
 }
+
+extern "C"
+ggml_tensor* go_sd_sample(
+    sd_ctx_t* sd_ctx, ggml_context* gctx,
+    ggml_tensor* xt, ggml_tensor* noise,
+    ggml_tensor* c, ggml_tensor* cvec,
+    ggml_tensor* uc, ggml_tensor* ucvec,
+    ggml_tensor* imageHint,
+    int64_t seed, sample_method_t method, int steps, float cfgScale, float controlStrength
+) {
+    sd_ctx->sd->rng->manual_seed(seed);
+    ggml_tensor_set_f32_randn(xt, sd_ctx->sd->rng);
+
+    auto sigmas = sd_ctx->sd->denoiser->schedule->get_sigmas(steps);
+    return sd_ctx->sd->sample(gctx, xt, noise, c, cvec, uc, ucvec, imageHint, cfgScale, method, sigmas, controlStrength);
+}
+
+extern "C"
+void go_sd_maybeFreeCond(sd_ctx_t* sd_ctx) {
+    if (sd_ctx->sd->free_params_immediately) {
+        sd_ctx->sd->cond_stage_model.free_params_buffer();
+    }
+}
+
+extern "C"
+void go_sd_maybeFreeDiff(sd_ctx_t* sd_ctx) {
+    if (sd_ctx->sd->free_params_immediately) {
+        sd_ctx->sd->diffusion_model.free_params_buffer();
+    }
+}
+
+extern "C"
+void go_sd_maybeFreeFirst(sd_ctx_t* sd_ctx) {
+    if ((sd_ctx->sd->free_params_immediately) && (!sd_ctx->sd->use_tiny_autoencoder)) {
+        sd_ctx->sd->first_stage_model.free_params_buffer();
+    }
+}
+
+extern "C"
+ggml_tensor* go_sd_decodeFirstStage(sd_ctx_t* sd_ctx, ggml_context* gctx, ggml_tensor* t) {
+    return sd_ctx->sd->decode_first_stage(gctx, t);
+}
+
+extern "C"
+void go_sd_getLearnedCondition(
+    ggml_tensor** outC, ggml_tensor** outVec,
+    sd_ctx_t* sd_ctx, ggml_context* gctx,
+    const char* promptPtr, int clipSkip, int width, int height
+) {
+    std::string prompt(promptPtr);
+    auto pair = sd_ctx->sd->get_learned_condition(gctx, prompt, clipSkip, width, height);
+    *outC = pair.first;
+    *outVec = pair.second;
+}
+
+extern "C"
+void go_sd_getLearnedConditionNeg(
+    ggml_tensor** outC, ggml_tensor** outVec,
+    sd_ctx_t* sd_ctx, ggml_context* gctx,
+    const char* promptPtr, int clipSkip, int width, int height
+) {
+    std::string prompt(promptPtr);
+    bool forceZeroEmbeddings = false;
+    if ((sd_ctx->sd->version == VERSION_XL) && (prompt.size() > 0)) {
+        forceZeroEmbeddings = true;
+    }
+    auto pair = sd_ctx->sd->get_learned_condition(gctx, prompt, clipSkip, width, height, forceZeroEmbeddings);
+    *outC = pair.first;
+    *outVec = pair.second;
+}
