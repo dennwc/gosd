@@ -120,6 +120,48 @@ public:
         }
         return result;
     }
+
+    std::vector<uint32_t> randnU(uint32_t n) {
+        std::vector<std::vector<uint32_t>> counter(4, std::vector<uint32_t>(n, 0));
+        for (uint32_t i = 0; i < n; i++) {
+            counter[0][i] = this->offset;
+        }
+
+        for (uint32_t i = 0; i < n; i++) {
+            counter[2][i] = i;
+        }
+        this->offset += 1;
+
+        std::vector<uint64_t> key(n, this->seed);
+        std::vector<std::vector<uint32_t>> key_uint32 = uint32(key);
+
+        std::vector<std::vector<uint32_t>> g = philox4_32(counter, key_uint32);
+
+        std::vector<uint32_t> result;
+        for (uint32_t i = 0; i < n; ++i) {
+            result.push_back(g[0][i]);
+            result.push_back(g[1][i]);
+        }
+        return result;
+    }
 };
+
+extern "C"
+void go_philox_rng(float* dst, int n, uint64_t seed) {
+    PhiloxRNG r(seed);
+    auto buf = r.randn(n);
+    for (int i = 0; i < n; i++) {
+        dst[i] = buf[i];
+    }
+}
+
+extern "C"
+void go_philox_rngU(uint32_t* dst, int n, uint64_t seed) {
+    PhiloxRNG r(seed);
+    auto buf = r.randnU(n);
+    for (int i = 0; i < 2*n; i++) {
+        dst[i] = buf[i];
+    }
+}
 
 #endif  // __RNG_PHILOX_H__
