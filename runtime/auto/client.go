@@ -14,6 +14,8 @@ import (
 	"net/http"
 	"strings"
 
+	_ "github.com/dennwc/gosd/meta/auto"
+
 	"github.com/dennwc/gosd/runtime"
 	"github.com/dennwc/gosd/runtime/types"
 )
@@ -26,6 +28,7 @@ const (
 
 var _ runtime.Runtime = (*Client)(nil)
 
+// NewClient creates an Automatic1111 WebUI client for a given URL.
 func NewClient(url string) *Client {
 	return &Client{
 		cli: http.DefaultClient,
@@ -33,13 +36,16 @@ func NewClient(url string) *Client {
 	}
 }
 
+// Client for Automatic1111 WebUI API.
 type Client struct {
 	cli *http.Client
 	url string
 }
 
+// Close the client.
 func (c *Client) Close() {}
 
+// ListModels lists all available Stable Diffusion models.
 func (c *Client) ListModels(ctx context.Context) ([]types.ModelInfo, error) {
 	req, err := http.NewRequestWithContext(ctx, "GET", c.url+"/sdapi/v1/sd-models", nil)
 	if err != nil {
@@ -75,6 +81,7 @@ func (c *Client) ListModels(ctx context.Context) ([]types.ModelInfo, error) {
 	return out, nil
 }
 
+// ListSamplers lists all available samplers.
 func (c *Client) ListSamplers(ctx context.Context) ([]types.SamplerInfo, error) {
 	req, err := http.NewRequestWithContext(ctx, "GET", c.url+"/sdapi/v1/samplers", nil)
 	if err != nil {
@@ -130,6 +137,7 @@ type textToImageReq struct {
 	OverrideSettingsRestore bool                `json:"override_settings_restore_afterwards"`
 }
 
+// TextToImage generates an image from a text prompt.
 func (c *Client) TextToImage(ctx context.Context, params types.TextToImageParams) (image.Image, error) {
 	rc, err := c.TextToImagePNG(ctx, params)
 	if err != nil {
@@ -139,6 +147,8 @@ func (c *Client) TextToImage(ctx context.Context, params types.TextToImageParams
 	return png.Decode(rc)
 }
 
+// TextToImagePNG generates an image from a text prompt and encodes it as a PNG.
+// Encoded image preserves any associated image metadata.
 func (c *Client) TextToImagePNG(ctx context.Context, params types.TextToImageParams) (io.ReadCloser, error) {
 	switch params.Sampler {
 	case "", types.SamplerEuler:

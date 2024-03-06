@@ -1,26 +1,11 @@
-# Stable Diffusion for Go
+# Stable Diffusion Toolbox for Go
 [![Go Reference](https://pkg.go.dev/badge/github.com/dennwc/gosd.svg)](https://pkg.go.dev/github.com/dennwc/gosd)
 
-This is a Go wrapper for [stable-diffusion.cpp](https://github.com/leejet/stable-diffusion.cpp).
-
-It embeds all required C/C++ files into the project and compiles it statically, so there's no need for additional libraries.
-
-Only tested on Linux x64.
-
-## Using as a CLI
-
-```shell
-go install github.com/dennwc/gosd/cmd/gosd@latest
-gosd -m ./path/to/model.safetensors -W 256 -H 256 --steps 20 -p "an image of a cat" -o output.png
-```
-
-## Using as a library
-
-```shell
-go get -u github.com/dennwc/gosd
-```
-
-See [cmd/gosd](./cmd/gosd/main.go) for an example.
+This repository contains Go libraries and tools for working with Stable Diffusion:
+- [gosd](./cmd/gosd) - tool/library wrapper for [stable-diffusion.cpp](https://github.com/leejet/stable-diffusion.cpp), allowing to run SD on CPU.
+- [sdinfo](./cmd/sdinfo) - tool/library for extracting prompt metadata from SD images (Automatic1111 and Invoke).
+- [runtime/auto](https://pkg.go.dev/github.com/dennwc/gosd/runtime/auto) - HTTP client for [Automatic1111 WebUI](https://github.com/AUTOMATIC1111/stable-diffusion-webui).
+- [ggml](https://pkg.go.dev/github.com/dennwc/gosd/ggml) - work-in-progress bindings for [GGML](https://github.com/ggerganov/ggml).
 
 ## License
 

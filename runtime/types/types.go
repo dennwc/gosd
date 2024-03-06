@@ -26,14 +26,14 @@ type SamplerInfo struct {
 
 // TextToImageParams controls typical parameters for text-to-image generation.
 type TextToImageParams struct {
-	Model    ModelID
-	Prompt   string
-	Negative string
-	Seed     int64
-	Sampler  SamplerID
-	Steps    int
-	CfgScale float64
-	ClipSkip int
-	Width    int
-	Height   int
+	Model    ModelID   `json:"model_id,omitempty"`
+	Prompt   string    `json:"positive_prompt,omitempty"`
+	Negative string    `json:"negative_prompt,omitempty"`
+	Seed     int64     `json:"seed,omitempty"`
+	Sampler  SamplerID `json:"sampler_id,omitempty"`
+	Steps    int       `json:"steps,omitempty"`
+	CfgScale float64   `json:"cfg_scale,omitempty"`
+	ClipSkip int       `json:"clip_skip,omitempty"`
+	Width    int       `json:"width,omitempty"`
+	Height   int       `json:"height,omitempty"`
 }
