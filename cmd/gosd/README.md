@@ -19,7 +19,7 @@ gosd -m ./path/to/model.safetensors -W 256 -H 256 --steps 20 -p "an image of a c
 go get -u github.com/dennwc/gosd
 ```
 
-See [example](./main.go) for an example.
+See [main.go](./main.go) for an example.
 
 ## License
 
