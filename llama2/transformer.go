@@ -77,7 +77,7 @@ func (t *Transformer) Forward(token Token, pos int) []float32 {
 	copy(x[:dim], contentRow[:dim])
 
 	// forward all the layers
-	for l := 0; l < p.Layers; l++ {
+	for l := range p.Layers {
 
 		// attention rmsnorm
 		rmsnorm(s.Xb[:dim], x[:dim], w.RmsAttWeight[l])
@@ -102,7 +102,7 @@ func (t *Transformer) Forward(token Token, pos int) []float32 {
 			if i < kvDim {
 				rotn = 2
 			}
-			for v := 0; v < rotn; v++ {
+			for v := range rotn {
 				vec := s.Q // the vector to rotate (query or key)
 				if v != 0 {
 					vec = s.K
@@ -116,9 +116,9 @@ func (t *Transformer) Forward(token Token, pos int) []float32 {
 
 		// multihead attention. iterate over all heads
 		// pragma omp parallel for private(h)
-		for h := 0; h < p.Heads; h++ {
+		for h := range p.Heads {
 			// get the query vector for this head
-			q := s.Q[h*headSize:]
+			q := s.Q[h*headSize : (h+1)*headSize]
 			// attention scores for this head
 			att := s.Att[h]
 			// iterate over all timesteps, including the current one
@@ -127,7 +127,7 @@ func (t *Transformer) Forward(token Token, pos int) []float32 {
 				k := s.KeyCache[l][ti][(h/kvMul)*headSize:]
 				// calculate the attention score as the dot product of q and k
 				score := float32(0.0)
-				for i := 0; i < headSize; i++ {
+				for i := range q {
 					score += q[i] * k[i]
 				}
 				score /= float32(math.Sqrt(float64(headSize)))
@@ -139,9 +139,9 @@ func (t *Transformer) Forward(token Token, pos int) []float32 {
 			softmax(att[:pos+1])
 
 			// weighted sum of the values, store back into xb
-			xb := s.Xb[h*headSize:]
-			for xi := 0; xi < headSize; xi++ {
-				xb[xi] = 0
+			xb := s.Xb[h*headSize : (h+1)*headSize]
+			for i := range xb {
+				xb[i] = 0
 			}
 			for ti := 0; ti <= pos; ti++ {
 				// get the value vector for this head and at this timestep
@@ -149,7 +149,7 @@ func (t *Transformer) Forward(token Token, pos int) []float32 {
 				// get the attention weight for this timestep
 				a := att[ti]
 				// accumulate the weighted value into xb
-				for i := 0; i < headSize; i++ {
+				for i := range xb {
 					xb[i] += a * v[i]
 				}
 			}
@@ -159,7 +159,7 @@ func (t *Transformer) Forward(token Token, pos int) []float32 {
 		matmul(s.Xb2, s.Xb, w.Wo[l], dim, dim)
 
 		// residual connection back into x
-		for i := 0; i < dim; i++ {
+		for i := range x {
 			x[i] += s.Xb2[i]
 		}
 
@@ -172,8 +172,7 @@ func (t *Transformer) Forward(token Token, pos int) []float32 {
 		matmul(s.Hb2, s.Xb, w.W3[l], dim, hiddenDim)
 
 		// SwiGLU non-linearity
-		for i := 0; i < hiddenDim; i++ {
-			val := s.Hb[i]
+		for i, val := range s.Hb {
 			// silu(x)=x*σ(x), where σ(x) is the logistic sigmoid
 			val *= float32(1.0 / (1.0 + math.Exp(float64(-val))))
 			// elementwise multiply with w3(x)
@@ -185,7 +184,7 @@ func (t *Transformer) Forward(token Token, pos int) []float32 {
 		matmul(s.Xb, s.Hb, w.W2[l], hiddenDim, dim)
 
 		// residual connection
-		for i := 0; i < dim; i++ {
+		for i := range x {
 			x[i] += s.Xb[i]
 		}
 	}
