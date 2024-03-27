@@ -84,28 +84,38 @@ func ReadCheckpoint(checkpoint string) (*Model, error) {
 	return m, nil
 }
 
-func map1d(ptr *[]float32, a int) []float32 {
+func map1d[T any](ptr *[]T, a int) []T {
 	flat := (*ptr)[:a:a]
 	*ptr = (*ptr)[len(flat):]
 	return flat
 }
 
-func map2d(ptr *[]float32, a, b int) [][]float32 {
+func map2d[T any](ptr *[]T, a, b int) [][]T {
 	flat := map1d(ptr, a*b)
-	out := make([][]float32, a)
+	out := make([][]T, a)
 	for i := range a {
 		out[i] = map1d(&flat, b)
 	}
 	return out
 }
 
-func map3d(ptr *[]float32, a, b, c int) [][][]float32 {
+func map3d[T any](ptr *[]T, a, b, c int) [][][]T {
 	flat := map1d(ptr, a*b*c)
-	out := make([][][]float32, a)
+	out := make([][][]T, a)
 	for i := range a {
 		out[i] = map2d(&flat, b, c)
 	}
 	return out
+}
+
+func make2d[T any](a, b int) [][]T {
+	flat := make([]T, a*b)
+	return map2d(&flat, a, b)
+}
+
+func make3d[T any](a, b, c int) [][][]T {
+	flat := make([]T, a*b*c)
+	return map3d(&flat, a, b, c)
 }
 
 func (m *Model) mapWeights(ptr []float32, sharedWeights bool) {

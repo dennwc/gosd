@@ -6,19 +6,19 @@ import (
 
 type RunState struct {
 	// current wave of activations
-	X      []float32 // activation at current time stamp (dim,)
-	Xb     []float32 // same, but inside a residual branch (dim,)
-	Xb2    []float32 // an additional buffer just for convenience (dim,)
-	Hb     []float32 // buffer for hidden dimension in the ffn (hidden_dim,)
-	Hb2    []float32 // buffer for hidden dimension in the ffn (hidden_dim,)
-	Q      []float32 // query (dim,)
-	K      []float32 // key (dim,)
-	V      []float32 // value (dim,)
-	Att    []float32 // buffer for scores/attention values (n_heads, seq_len)
-	Logits []float32 // output logits
+	X      []float32   // activation at current time stamp [dim]
+	Xb     []float32   // same, but inside a residual branch [dim]
+	Xb2    []float32   // an additional buffer just for convenience [dim]
+	Hb     []float32   // buffer for hidden dimension in the ffn [hidden_dim]
+	Hb2    []float32   // buffer for hidden dimension in the ffn [hidden_dim]
+	Q      []float32   // query [dim]
+	K      []float32   // key [dim]
+	V      []float32   // value [dim]
+	Att    [][]float32 // buffer for scores/attention values [n_heads][seq_len]
+	Logits []float32   // output logits
 	// kv cache
-	KeyCache   []float32 // (layer, seq_len, dim)
-	ValueCache []float32 // (layer, seq_len, dim)
+	KeyCache   [][][]float32 // [layer][seq_len][dim]
+	ValueCache [][][]float32 // [layer][seq_len][dim]
 }
 
 type Transformer struct {
@@ -35,9 +35,9 @@ func NewRunState(p *Config) *RunState {
 		Hb:         make([]float32, p.HiddenDim),
 		Hb2:        make([]float32, p.HiddenDim),
 		Q:          make([]float32, p.Dim),
-		KeyCache:   make([]float32, p.Layers*p.SeqLen*kvDim),
-		ValueCache: make([]float32, p.Layers*p.SeqLen*kvDim),
-		Att:        make([]float32, p.Heads*p.SeqLen),
+		KeyCache:   make3d[float32](p.Layers, p.SeqLen, kvDim),
+		ValueCache: make3d[float32](p.Layers, p.SeqLen, kvDim),
+		Att:        make2d[float32](p.Heads, p.SeqLen),
 		Logits:     make([]float32, p.VocabSize),
 	}
 }
@@ -83,9 +83,8 @@ func (t *Transformer) Forward(token Token, pos int) []float32 {
 		rmsnorm(s.Xb[:dim], x[:dim], w.RmsAttWeight[l])
 
 		// key and value point to the kv cache
-		loff := l * p.SeqLen * kvDim // kv cache layer offset for convenience
-		s.K = s.KeyCache[loff+pos*kvDim:]
-		s.V = s.ValueCache[loff+pos*kvDim:]
+		s.K = s.KeyCache[l][pos]
+		s.V = s.ValueCache[l][pos]
 
 		// qkv matmuls for this position
 		matmul(s.Q, s.Xb, w.Wq[l], dim, dim)
@@ -121,11 +120,11 @@ func (t *Transformer) Forward(token Token, pos int) []float32 {
 			// get the query vector for this head
 			q := s.Q[h*headSize:]
 			// attention scores for this head
-			att := s.Att[h*p.SeqLen:]
+			att := s.Att[h]
 			// iterate over all timesteps, including the current one
 			for ti := 0; ti <= pos; ti++ {
 				// get the key vector for this head and at this timestep
-				k := s.KeyCache[loff+ti*kvDim+(h/kvMul)*headSize:]
+				k := s.KeyCache[l][ti][(h/kvMul)*headSize:]
 				// calculate the attention score as the dot product of q and k
 				score := float32(0.0)
 				for i := 0; i < headSize; i++ {
@@ -146,7 +145,7 @@ func (t *Transformer) Forward(token Token, pos int) []float32 {
 			}
 			for ti := 0; ti <= pos; ti++ {
 				// get the value vector for this head and at this timestep
-				v := s.ValueCache[loff+ti*kvDim+(h/kvMul)*headSize:]
+				v := s.ValueCache[l][ti][(h/kvMul)*headSize:]
 				// get the attention weight for this timestep
 				a := att[ti]
 				// accumulate the weighted value into xb
