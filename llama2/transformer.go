@@ -1,7 +1,7 @@
 package llama2
 
 import (
-	"math"
+	"github.com/chewxy/math32"
 )
 
 type RunState struct {
@@ -69,7 +69,6 @@ func (t *Transformer) Forward(token Token, pos int) []float32 {
 	dim := p.Dim
 	kvDim := (p.Dim * p.KVHeads) / p.Heads
 	kvMul := p.Heads / p.KVHeads // integer multiplier of the kv sharing in multiquery
-	hiddenDim := p.HiddenDim
 	headSize := dim / p.Heads
 
 	// copy the token embedding into x
@@ -78,26 +77,27 @@ func (t *Transformer) Forward(token Token, pos int) []float32 {
 
 	// forward all the layers
 	for l := range p.Layers {
+		keyCache := s.KeyCache[l]
+		valCache := s.ValueCache[l]
 
 		// attention rmsnorm
 		rmsnorm(s.Xb[:dim], x[:dim], w.RmsAttWeight[l])
 
 		// key and value point to the kv cache
-		s.K = s.KeyCache[l][pos]
-		s.V = s.ValueCache[l][pos]
+		s.K = keyCache[pos]
+		s.V = valCache[pos]
 
 		// qkv matmuls for this position
-		matmul(s.Q, s.Xb, w.Wq[l], dim, dim)
-		matmul(s.K, s.Xb, w.Wk[l], dim, kvDim)
-		matmul(s.V, s.Xb, w.Wv[l], dim, kvDim)
+		matmul(s.Q, s.Xb, w.Wq[l])
+		matmul(s.K, s.Xb, w.Wk[l])
+		matmul(s.V, s.Xb, w.Wv[l])
 
 		// RoPE relative positional encoding: complex-valued rotate q and k in each head
 		for i := 0; i < dim; i += 2 {
 			headDim := i % headSize
-			freq := float32(1.0 / math.Pow(10000.0, float64(headDim)/float64(headSize)))
+			freq := 1.0 / math32.Pow(10000.0, float32(headDim)/float32(headSize))
 			val := float32(pos) * freq
-			fcr := float32(math.Cos(float64(val)))
-			fci := float32(math.Sin(float64(val)))
+			fci, fcr := math32.Sincos(val)
 			rotn := 1 // how many vectors? 2 = q & k, 1 = q only
 			if i < kvDim {
 				rotn = 2
@@ -107,14 +107,15 @@ func (t *Transformer) Forward(token Token, pos int) []float32 {
 				if v != 0 {
 					vec = s.K
 				}
-				v0 := vec[i]
+				v0 := vec[i+0]
 				v1 := vec[i+1]
-				vec[i] = v0*fcr - v1*fci
+				vec[i+0] = v0*fcr - v1*fci
 				vec[i+1] = v0*fci + v1*fcr
 			}
 		}
 
 		// multihead attention. iterate over all heads
+		headSizeSqrt := math32.Sqrt(float32(headSize))
 		// pragma omp parallel for private(h)
 		for h := range p.Heads {
 			// get the query vector for this head
@@ -124,13 +125,10 @@ func (t *Transformer) Forward(token Token, pos int) []float32 {
 			// iterate over all timesteps, including the current one
 			for ti := 0; ti <= pos; ti++ {
 				// get the key vector for this head and at this timestep
-				k := s.KeyCache[l][ti][(h/kvMul)*headSize:]
+				k := keyCache[ti][(h/kvMul)*headSize : (h/kvMul+1)*headSize]
 				// calculate the attention score as the dot product of q and k
-				score := float32(0.0)
-				for i := range q {
-					score += q[i] * k[i]
-				}
-				score /= float32(math.Sqrt(float64(headSize)))
+				score := dot(q, k)
+				score /= headSizeSqrt
 				// save the score to the attention buffer
 				att[ti] = score
 			}
@@ -140,12 +138,10 @@ func (t *Transformer) Forward(token Token, pos int) []float32 {
 
 			// weighted sum of the values, store back into xb
 			xb := s.Xb[h*headSize : (h+1)*headSize]
-			for i := range xb {
-				xb[i] = 0
-			}
+			memset0(xb)
 			for ti := 0; ti <= pos; ti++ {
 				// get the value vector for this head and at this timestep
-				v := s.ValueCache[l][ti][(h/kvMul)*headSize:]
+				v := valCache[ti][(h/kvMul)*headSize:]
 				// get the attention weight for this timestep
 				a := att[ti]
 				// accumulate the weighted value into xb
@@ -156,7 +152,7 @@ func (t *Transformer) Forward(token Token, pos int) []float32 {
 		}
 
 		// final matmul to get the output of the attention
-		matmul(s.Xb2, s.Xb, w.Wo[l], dim, dim)
+		matmul(s.Xb2, s.Xb, w.Wo[l])
 
 		// residual connection back into x
 		for i := range x {
@@ -168,20 +164,14 @@ func (t *Transformer) Forward(token Token, pos int) []float32 {
 
 		// Now for FFN in PyTorch we have: self.w2(F.silu(self.w1(x)) * self.w3(x))
 		// first calculate self.w1(x) and self.w3(x)
-		matmul(s.Hb, s.Xb, w.W1[l], dim, hiddenDim)
-		matmul(s.Hb2, s.Xb, w.W3[l], dim, hiddenDim)
+		matmul(s.Hb, s.Xb, w.W1[l])
+		matmul(s.Hb2, s.Xb, w.W3[l])
 
 		// SwiGLU non-linearity
-		for i, val := range s.Hb {
-			// silu(x)=x*σ(x), where σ(x) is the logistic sigmoid
-			val *= float32(1.0 / (1.0 + math.Exp(float64(-val))))
-			// elementwise multiply with w3(x)
-			val *= s.Hb2[i]
-			s.Hb[i] = val
-		}
+		swiglu(s.Hb, s.Hb2)
 
 		// final matmul to get the output of the ffn
-		matmul(s.Xb, s.Hb, w.W2[l], hiddenDim, dim)
+		matmul(s.Xb, s.Hb, w.W2[l])
 
 		// residual connection
 		for i := range x {
@@ -193,6 +183,6 @@ func (t *Transformer) Forward(token Token, pos int) []float32 {
 	rmsnorm(x[:dim], x[:dim], w.RmsFinalWeight)
 
 	// classifier into logits
-	matmul(s.Logits, x, w.WCls, p.Dim, p.VocabSize)
+	matmul(s.Logits, x, w.WCls)
 	return s.Logits
 }
