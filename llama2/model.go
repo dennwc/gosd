@@ -12,23 +12,23 @@ type Config struct {
 
 type TransformerWeights struct {
 	// token embedding table
-	TokenEmbeddingTable []float32 // (vocab_size, dim)
+	TokenEmbeddings [][]float32 // [vocab][dim]
 	// weights for rmsnorms
-	RmsAttWeight []float32 // (layer, dim) rmsnorm weights
-	RmsFfnWeight []float32 // (layer, dim)
+	RmsAttWeight [][]float32 // [layer][dim] rmsnorm weights
+	RmsFfnWeight [][]float32 // [layer][dim]
 	// weights for matmuls. note dim == n_heads * head_size
-	Wq []float32 // (layer, dim, n_heads * head_size)
-	Wk []float32 // (layer, dim, n_kv_heads * head_size)
-	Wv []float32 // (layer, dim, n_kv_heads * head_size)
-	Wo []float32 // (layer, n_heads * head_size, dim)
+	Wq [][][]float32 // [layer][dim][n_heads * head_size]
+	Wk [][][]float32 // [layer][dim][n_kv_heads * head_size]
+	Wv [][][]float32 // [layer][dim][n_kv_heads * head_size]
+	Wo [][][]float32 // [layer][n_heads * head_size][dim]
 	// weights for ffn
-	W1 []float32 // (layer, hidden_dim, dim)
-	W2 []float32 // (layer, dim, hidden_dim)
-	W3 []float32 // (layer, hidden_dim, dim)
+	W1 [][][]float32 // [layer][hidden_dim][dim]
+	W2 [][][]float32 // [layer][dim][hidden_dim]
+	W3 [][][]float32 // [layer][hidden_dim][dim]
 	// final rmsnorm
-	RmsFinalWeight []float32 // (dim,)
+	RmsFinalWeight []float32 // [dim]
 	// (optional) classifier weights for the logits, on the last layer
-	WCls []float32
+	WCls [][]float32 // [vocab][dim]
 }
 
 type Model struct {
@@ -84,51 +84,56 @@ func ReadCheckpoint(checkpoint string) (*Model, error) {
 	return m, nil
 }
 
+func map1d(ptr *[]float32, a int) []float32 {
+	flat := (*ptr)[:a:a]
+	*ptr = (*ptr)[len(flat):]
+	return flat
+}
+
+func map2d(ptr *[]float32, a, b int) [][]float32 {
+	flat := map1d(ptr, a*b)
+	out := make([][]float32, a)
+	for i := range a {
+		out[i] = map1d(&flat, b)
+	}
+	return out
+}
+
+func map3d(ptr *[]float32, a, b, c int) [][][]float32 {
+	flat := map1d(ptr, a*b*c)
+	out := make([][][]float32, a)
+	for i := range a {
+		out[i] = map2d(&flat, b, c)
+	}
+	return out
+}
+
 func (m *Model) mapWeights(ptr []float32, sharedWeights bool) {
 	p := &m.Config
 	w := &m.Weights
-	head_size := p.Dim / p.Heads
-	// make sure the multiplications below are done in 64bit to fit the parameter counts of 13B+ models
-	n_layers := uint64(p.Layers)
+	headSize := p.Dim / p.Heads
 
-	w.TokenEmbeddingTable = ptr[:p.VocabSize*p.Dim]
-	ptr = ptr[len(w.TokenEmbeddingTable):]
+	w.TokenEmbeddings = map2d(&ptr, p.VocabSize, p.Dim)
+	w.RmsAttWeight = map2d(&ptr, p.Layers, p.Dim)
 
-	w.RmsAttWeight = ptr[:n_layers*uint64(p.Dim)]
-	ptr = ptr[len(w.RmsAttWeight):]
+	w.Wq = map3d(&ptr, p.Layers, p.Dim, p.Heads*headSize)
+	w.Wk = map3d(&ptr, p.Layers, p.Dim, p.KVHeads*headSize)
+	w.Wv = map3d(&ptr, p.Layers, p.Dim, p.KVHeads*headSize)
+	w.Wo = map3d(&ptr, p.Layers, p.Heads*headSize, p.Dim)
 
-	w.Wq = ptr[:n_layers*uint64(p.Dim)*(uint64(p.Heads)*uint64(head_size))]
-	ptr = ptr[len(w.Wq):]
+	w.RmsFfnWeight = map2d(&ptr, p.Layers, p.Dim)
 
-	w.Wk = ptr[:n_layers*uint64(p.Dim)*(uint64(p.KVHeads)*uint64(head_size))]
-	ptr = ptr[len(w.Wk):]
+	w.W1 = map3d(&ptr, p.Layers, p.HiddenDim, p.Dim)
+	w.W2 = map3d(&ptr, p.Layers, p.Dim, p.HiddenDim)
+	w.W3 = map3d(&ptr, p.Layers, p.HiddenDim, p.Dim)
 
-	w.Wv = ptr[:n_layers*uint64(p.Dim)*(uint64(p.KVHeads)*uint64(head_size))]
-	ptr = ptr[len(w.Wv):]
+	w.RmsFinalWeight = map1d(&ptr, p.Dim)
 
-	w.Wo = ptr[:n_layers*(uint64(p.Heads)*uint64(head_size))*uint64(p.Dim)]
-	ptr = ptr[len(w.Wo):]
-
-	w.RmsFfnWeight = ptr[:n_layers*uint64(p.Dim)]
-	ptr = ptr[len(w.RmsFfnWeight):]
-
-	w.W1 = ptr[:n_layers*uint64(p.Dim)*uint64(p.HiddenDim)]
-	ptr = ptr[len(w.W1):]
-
-	w.W2 = ptr[:n_layers*uint64(p.HiddenDim)*uint64(p.Dim)]
-	ptr = ptr[len(w.W2):]
-
-	w.W3 = ptr[:n_layers*uint64(p.Dim)*uint64(p.HiddenDim)]
-	ptr = ptr[len(w.W3):]
-
-	w.RmsFinalWeight = ptr[:p.Dim]
-	ptr = ptr[len(w.RmsFinalWeight):]
-
-	ptr = ptr[p.SeqLen*head_size/2:] // skip what used to be freq_cis_real (for RoPE)
-	ptr = ptr[p.SeqLen*head_size/2:] // skip what used to be freq_cis_imag (for RoPE)
+	ptr = ptr[p.SeqLen*headSize/2:] // skip what used to be freq_cis_real (for RoPE)
+	ptr = ptr[p.SeqLen*headSize/2:] // skip what used to be freq_cis_imag (for RoPE)
 	if sharedWeights {
-		w.WCls = w.TokenEmbeddingTable
+		w.WCls = w.TokenEmbeddings
 	} else {
-		w.WCls = ptr
+		w.WCls = map2d(&ptr, p.VocabSize, p.Dim)
 	}
 }

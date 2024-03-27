@@ -73,14 +73,14 @@ func (t *Transformer) Forward(token Token, pos int) []float32 {
 	headSize := dim / p.Heads
 
 	// copy the token embedding into x
-	contentRow := w.TokenEmbeddingTable[int(token)*dim:]
+	contentRow := w.TokenEmbeddings[token]
 	copy(x[:dim], contentRow[:dim])
 
 	// forward all the layers
 	for l := 0; l < p.Layers; l++ {
 
 		// attention rmsnorm
-		rmsnorm(s.Xb[:dim], x[:dim], w.RmsAttWeight[l*dim:(l+1)*dim])
+		rmsnorm(s.Xb[:dim], x[:dim], w.RmsAttWeight[l])
 
 		// key and value point to the kv cache
 		loff := l * p.SeqLen * kvDim // kv cache layer offset for convenience
@@ -88,9 +88,9 @@ func (t *Transformer) Forward(token Token, pos int) []float32 {
 		s.V = s.ValueCache[loff+pos*kvDim:]
 
 		// qkv matmuls for this position
-		matmul(s.Q, s.Xb, w.Wq[l*dim*dim:], dim, dim)
-		matmul(s.K, s.Xb, w.Wk[l*dim*kvDim:], dim, kvDim)
-		matmul(s.V, s.Xb, w.Wv[l*dim*kvDim:], dim, kvDim)
+		matmul(s.Q, s.Xb, w.Wq[l], dim, dim)
+		matmul(s.K, s.Xb, w.Wk[l], dim, kvDim)
+		matmul(s.V, s.Xb, w.Wv[l], dim, kvDim)
 
 		// RoPE relative positional encoding: complex-valued rotate q and k in each head
 		for i := 0; i < dim; i += 2 {
@@ -157,7 +157,7 @@ func (t *Transformer) Forward(token Token, pos int) []float32 {
 		}
 
 		// final matmul to get the output of the attention
-		matmul(s.Xb2, s.Xb, w.Wo[l*dim*dim:], dim, dim)
+		matmul(s.Xb2, s.Xb, w.Wo[l], dim, dim)
 
 		// residual connection back into x
 		for i := 0; i < dim; i++ {
@@ -165,12 +165,12 @@ func (t *Transformer) Forward(token Token, pos int) []float32 {
 		}
 
 		// ffn rmsnorm
-		rmsnorm(s.Xb[:dim], x[:dim], w.RmsFfnWeight[l*dim:(l+1)*dim])
+		rmsnorm(s.Xb[:dim], x[:dim], w.RmsFfnWeight[l])
 
 		// Now for FFN in PyTorch we have: self.w2(F.silu(self.w1(x)) * self.w3(x))
 		// first calculate self.w1(x) and self.w3(x)
-		matmul(s.Hb, s.Xb, w.W1[l*dim*hiddenDim:], dim, hiddenDim)
-		matmul(s.Hb2, s.Xb, w.W3[l*dim*hiddenDim:], dim, hiddenDim)
+		matmul(s.Hb, s.Xb, w.W1[l], dim, hiddenDim)
+		matmul(s.Hb2, s.Xb, w.W3[l], dim, hiddenDim)
 
 		// SwiGLU non-linearity
 		for i := 0; i < hiddenDim; i++ {
@@ -183,7 +183,7 @@ func (t *Transformer) Forward(token Token, pos int) []float32 {
 		}
 
 		// final matmul to get the output of the ffn
-		matmul(s.Xb, s.Hb, w.W2[l*dim*hiddenDim:], hiddenDim, dim)
+		matmul(s.Xb, s.Hb, w.W2[l], hiddenDim, dim)
 
 		// residual connection
 		for i := 0; i < dim; i++ {
@@ -192,7 +192,7 @@ func (t *Transformer) Forward(token Token, pos int) []float32 {
 	}
 
 	// final rmsnorm
-	rmsnorm(x[:dim], x[:dim], w.RmsFinalWeight[:dim])
+	rmsnorm(x[:dim], x[:dim], w.RmsFinalWeight)
 
 	// classifier into logits
 	matmul(s.Logits, x, w.WCls, p.Dim, p.VocabSize)

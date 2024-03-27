@@ -40,15 +40,15 @@ func softmax(x []float32) {
 	}
 }
 
-func matmul(xout, x, w []float32, n, d int) {
+func matmul(xout, x []float32, w [][]float32, n, d int) {
 	// W (d,n) @ x (n,) -> xout (d,)
 	// by far the most amount of time is spent inside this little function
 
 	// pragma omp parallel for private(i)
-	for i := 0; i < d; i++ {
+	for i := range d {
 		val := float32(0.0)
-		for j := 0; j < n; j++ {
-			val += w[i*n+j] * x[j]
+		for j := range n {
+			val += w[i][j] * x[j]
 		}
 		xout[i] = val
 	}
