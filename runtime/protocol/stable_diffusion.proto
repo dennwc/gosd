@@ -1,0 +1,67 @@
+syntax = "proto3";
+
+package protocol;
+
+option go_package = "github.com/dennwc/gosd/runtime/protocol";
+
+service StableDiffusion {
+  rpc ListSamplers(ListSamplersReq) returns (ListSamplersResp);
+  rpc ListModels(ListModelsReq) returns (ListModelsResp);
+  rpc TextToImage(TextToImageReq) returns (TextToImageResp);
+}
+
+message SamplerInfo {
+  string id = 1;
+  string name = 2;
+}
+message ListSamplersReq {
+}
+message ListSamplersResp {
+  repeated SamplerInfo samplers = 1;
+}
+
+message ModelInfo {
+  enum Kind {
+    UNSPECIFIED = 0;
+    SD15 = 1;
+    SDXL10 = 2;
+  }
+  string id = 1; // backend-specific unique identifier
+  string name = 2; // name of the model (usually a base file name)
+  string title = 3; // human-readable name
+  string file = 4; // file path to the model
+  string sha256 = 5; // SHA256 hash of the file
+  Kind kind = 6;
+}
+message ListModelsReq {
+}
+message ListModelsResp {
+  repeated ModelInfo models = 1;
+}
+
+message Image {
+  uint32 width = 1;
+  uint32 height = 2;
+  oneof image {
+    bytes rgb8 = 3; // 8 bit per channel RGB
+    bytes rgba8 = 4; // 8 bit per channel RGBA
+    bytes png = 5; // PNG bytes
+    bytes jpeg = 6; // JPEG bytes
+  }
+}
+message TextToImageReq {
+  string model_id = 1;
+  string positive_prompt = 2;
+  string negative_prompt = 3;
+  double cfg_scale = 4;
+  int64 rng_seed = 5;
+  string sampler_id = 6;
+  uint32 sampler_steps = 7;
+  uint32 image_width = 8;
+  uint32 image_height = 9;
+  uint32 clip_skip = 10;
+}
+message TextToImageResp {
+  Image image = 1;
+  int64 rng_seed = 2;
+}
