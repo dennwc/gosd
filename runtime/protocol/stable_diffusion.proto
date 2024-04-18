@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package protocol;
+package generative_ai;
 
 option go_package = "github.com/dennwc/gosd/runtime/protocol";
 
